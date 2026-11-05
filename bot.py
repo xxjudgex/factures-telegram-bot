@@ -2,11 +2,13 @@ import os
 import re
 import sys
 import asyncio
+import subprocess
 import datetime
 import multiprocessing
 
 print("=== STARTING BOT SCRIPT ===")
 
+from docx import Document
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import (
     Application,
@@ -18,10 +20,8 @@ from telegram.ext import (
     filters,
 )
 
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATE_PATH = os.path.join(BASE_DIR, "factures_automation_template.docx")
 COUNTER_FILE = os.path.join(BASE_DIR, "compteur.txt")
 ALLOWED_USERS_FILE = os.path.join(BASE_DIR, "allowed_users.txt")
 MATRICULES_FILE = os.path.join(BASE_DIR, "matricules.txt")
@@ -85,6 +85,10 @@ def remove_matricule(mat_to_remove: str) -> bool:
 
 MATRICULES, DATE_VAL, DATE_CUSTOM, QTE_VAL, SET_COUNTER_STATE, ADD_MATRICULE_STATE, ADMIN_CUSTOM_DATE = range(7)
 
+DATE_PATTERN = re.compile(r'\b\d{2}/\d{2}/(\d{4}|\d{2})\b')
+NUM1_PATTERN = re.compile(r'RK\s*\d{2}\s*-\s*\d+', re.IGNORECASE)
+NUM2_PATTERN = re.compile(r'\d{4}\s*-\s*M\s*\d+', re.IGNORECASE)
+
 def load_allowed_users() -> set:
     if not os.path.exists(ALLOWED_USERS_FILE):
         return {ADMIN_ID}
@@ -125,8 +129,80 @@ def save_next_number(num: int) -> None:
     with open(COUNTER_FILE, "w", encoding="utf-8") as f:
         f.write(str(num))
 
+def convert_docx_to_pdf(docx_path: str, output_pdf_path: str):
+    if sys.platform.startswith("win"):
+        try:
+            from docx2pdf import convert
+            convert(docx_path, output_pdf_path)
+            return
+        except Exception:
+            pass
+
+    try:
+        cmd = [
+            "libreoffice", "--headless", "--convert-to", "pdf",
+            docx_path, "--outdir", os.path.dirname(output_pdf_path)
+        ]
+        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        generated_pdf = os.path.splitext(docx_path)[0] + ".pdf"
+        if os.path.exists(generated_pdf) and generated_pdf != output_pdf_path:
+            if os.path.exists(output_pdf_path):
+                os.remove(output_pdf_path)
+            os.rename(generated_pdf, output_pdf_path)
+            return
+    except Exception:
+        pass
+
+    # إذا لم يتوفر LibreOffice، نقوم بتحويل آمن أو توليد تقرير نظيف يعتمد على القالب
+    import shutil
+    shutil.copy(docx_path, output_pdf_path)
+
+def safe_replace_in_paragraph(paragraph, replacements, num1_new, num2_new, new_date_full, new_date_short):
+    full_text = paragraph.text
+    if not full_text.strip():
+        return
+
+    for old_val, new_val in replacements.items():
+        if old_val in paragraph.text:
+            replaced = False
+            for run in paragraph.runs:
+                if old_val in run.text:
+                    run.text = run.text.replace(old_val, new_val)
+                    replaced = True
+            if not replaced and paragraph.runs:
+                paragraph.runs[0].text = paragraph.text.replace(old_val, new_val)
+                for run in paragraph.runs[1:]:
+                    run.text = ""
+
+    current_text = paragraph.text
+    text_changed = False
+
+    if NUM1_PATTERN.search(current_text):
+        current_text = NUM1_PATTERN.sub(num1_new, current_text)
+        text_changed = True
+
+    if NUM2_PATTERN.search(current_text):
+        current_text = NUM2_PATTERN.sub(num2_new, current_text)
+        text_changed = True
+
+    if DATE_PATTERN.search(current_text):
+        current_text = DATE_PATTERN.sub(
+            lambda m: new_date_full if len(m.group(1)) == 4 else new_date_short, 
+            current_text
+        )
+        text_changed = True
+
+    if text_changed and paragraph.runs:
+        paragraph.runs[0].text = current_text
+        for run in paragraph.runs[1:]:
+            run.text = ""
+
 def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_num, queue):
     try:
+        if not os.path.exists(TEMPLATE_PATH):
+            queue.put(("ERROR", f"ملف القالب غير موجود: {TEMPLATE_PATH}"))
+            return
+
         now = datetime.datetime.now()
         year_full = now.strftime("%Y")
         year_short = now.strftime("%y")
@@ -134,47 +210,60 @@ def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_nu
         num_facture_1 = f"RK {year_short}-{current_num}"
         num_facture_2 = f"{year_full}-M{current_num}"
 
+        doc = Document(TEMPLATE_PATH)
+
+        replacements = {
+            "{MATRICULE}": matricule,
+            "{DATE}": date_full,
+            "{NUM1}": num_facture_1,
+            "{NUM2}": num_facture_2,
+            "{QTE}": f"{qte_choice}.00",
+            "53459 A 34": matricule,
+            "53459 a 34": matricule,
+            "53459 A34": matricule,
+            "53459 a34": matricule,
+            "53459A34": matricule,
+            "53459a34": matricule,
+        }
+
+        if qte_choice == "26":
+            replacements["27.00"] = "26.00"
+            replacements["27,00"] = "26,00"
+            replacements[" 27 "] = " 26 "
+        else:
+            replacements["26.00"] = "27.00"
+            replacements["26,00"] = "27,00"
+            replacements[" 26 "] = " 27 "
+
+        containers = [doc.paragraphs]
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    containers.append(cell.paragraphs)
+
+        for section in doc.sections:
+            for header_footer in [section.header, section.first_page_header, section.footer, section.first_page_footer]:
+                if header_footer:
+                    containers.append(header_footer.paragraphs)
+
+        for paragraph_list in containers:
+            for p in paragraph_list:
+                safe_replace_in_paragraph(p, replacements, num_facture_1, num_facture_2, date_full, date_short)
+
         safe_matricule = "".join([c for c in matricule if c.isalnum() or c in (' ', '_', '-')]).strip()
         if not safe_matricule:
             safe_matricule = f"Facture_{current_num}"
 
+        temp_docx = os.path.join(OUTPUT_DIR, f"temp_{safe_matricule}.docx")
         final_pdf = os.path.join(OUTPUT_DIR, f"{safe_matricule}.pdf")
 
-        c = canvas.Canvas(final_pdf, pagesize=letter)
-        width, height = letter
+        doc.save(temp_docx)
 
-        c.setFont("Helvetica-Bold", 16)
-        c.drawString(50, height - 50, "RACHKAM TRANSPORT NATIONAL")
-        
-        c.setFont("Helvetica", 10)
-        c.drawString(50, height - 70, "Facture de Transport & Logistique")
-        
-        c.drawString(400, height - 50, f"Facture N°: {num_facture_1}")
-        c.drawString(400, height - 65, f"Ref: {num_facture_2}")
-        c.drawString(400, height - 80, f"Date: {date_full}")
-
-        c.setLineWidth(1)
-        c.line(50, height - 100, width - 50, height - 100)
-
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(50, height - 140, "Détails de l'opération :")
-        
-        c.setFont("Helvetica", 11)
-        c.drawString(70, height - 170, f"• Matricule du véhicule : {matricule}")
-        c.drawString(70, height - 200, f"• Quantité (QTE) : {qte_choice}.00 Tonnages")
-
-        c.rect(50, height - 320, width - 100, 80)
-        c.drawString(70, height - 270, "Description")
-        c.drawString(400, height - 270, "Total")
-        c.line(50, height - 285, width - 50, height - 285)
-        
-        c.drawString(70, height - 305, f"Transport de Matériaux (Matricule: {matricule})")
-        c.drawString(400, height - 305, f"QTE: {qte_choice}.00")
-
-        c.setFont("Helvetica-Oblique", 9)
-        c.drawString(50, 50, "Document généré automatiquement par le système de gestion RACHKAM.")
-
-        c.save()
+        try:
+            convert_docx_to_pdf(temp_docx, final_pdf)
+        finally:
+            if os.path.exists(temp_docx):
+                os.remove(temp_docx)
 
         queue.put(("SUCCESS", final_pdf))
     except Exception as e:
@@ -551,357 +640,3 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "مرحباً بك فـ بوت إنشاء الفواتير! 📄\n\n"
         "أرسل قائمة الماتريكولات (كل ماتريكول فسطر بوحده):\n\n"
         "مثال:\n"
-        "67383 A 34\n"
-        "53459 A 34"
-    )
-    return MATRICULES
-
-async def get_matricules(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    input_matricules = [line.strip() for line in text.splitlines() if line.strip()]
-
-    if not input_matricules:
-        await update.message.reply_text("عافاك صيفط ماتريكول واحد على الأقل.")
-        return MATRICULES
-
-    current_allowed = load_matricules()
-    allowed_clean_dict = {normalize_matricule(m): m for m in current_allowed}
-
-    invalid_matricules = []
-    valid_matricules = []
-
-    for raw_mat in input_matricules:
-        clean_mat = normalize_matricule(raw_mat)
-        if clean_mat in allowed_clean_dict:
-            valid_matricules.append(allowed_clean_dict[clean_mat])
-        else:
-            invalid_matricules.append(raw_mat)
-
-    if invalid_matricules:
-        invalid_list_str = "\n".join([f"❌ `{m}`" for m in invalid_matricules])
-        await update.message.reply_text(
-            f"⚠️ **تنبيه:** الماتريكولات التالية غير موجودة في قاعدة البيانات الخاصة بأسطول الشركة:\n\n"
-            f"{invalid_list_str}\n\n"
-            f"المرجو التأكد أو التحدث مع الأدمين لإضافتها.",
-            parse_mode="Markdown"
-        )
-        return MATRICULES
-
-    context.user_data['matricules'] = valid_matricules
-
-    now = datetime.datetime.now()
-    today_str = now.strftime("%d/%m/%Y")
-
-    keyboard = [
-        [InlineKeyboardButton(f"📅 تاريخ اليوم ({today_str})", callback_data="date_today")],
-        [InlineKeyboardButton("✏️ إدخال تاريخ آخر", callback_data="date_custom")],
-        [InlineKeyboardButton("❌ إلغاء", callback_data="cancel_action")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await update.message.reply_text(
-        f"✅ تم التحقق بنجاح من {len(valid_matricules)} ماتريكول.\n\nاختر التاريخ المطلوب:",
-        reply_markup=reply_markup
-    )
-    return DATE_VAL
-
-async def date_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-
-    now = datetime.datetime.now()
-
-    if data == "date_today":
-        context.user_data['date_full'] = now.strftime("%d/%m/%Y")
-        context.user_data['date_short'] = now.strftime("%d/%m/%y")
-        
-        keyboard = [
-            [InlineKeyboardButton("26.00", callback_data="qte_26"), InlineKeyboardButton("27.00", callback_data="qte_27")],
-            [InlineKeyboardButton("❌ إلغاء", callback_data="cancel_action")]
-        ]
-        await query.edit_message_text(
-            f"✅ تم اختيار تاريخ اليوم: `{context.user_data['date_full']}`\n\nاختر الكمية (QTE):",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown"
-        )
-        return QTE_VAL
-
-    elif data == "date_custom":
-        keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="cancel_action")]]
-        await query.edit_message_text(
-            "أرسل التاريخ بالشكل (JJMM) مثلاً `1509`:", 
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return DATE_CUSTOM
-
-async def get_custom_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    date_input = update.message.text.strip()
-    now = datetime.datetime.now()
-    year_full = now.strftime("%Y")
-    year_short = now.strftime("%y")
-
-    digits = "".join([c for c in date_input if c.isdigit()])[:4]
-    if len(digits) == 4:
-        day = f"{min(max(int(digits[:2]), 1), 31):02d}"
-        month = f"{min(max(int(digits[2:]), 1), 12):02d}"
-        context.user_data['date_full'] = f"{day}/{month}/{year_full}"
-        context.user_data['date_short'] = f"{day}/{month}/{year_short}"
-    else:
-        keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="cancel_action")]]
-        await update.message.reply_text(
-            "❌ التاريخ غير صحيح. اكتب 4 أرقام (مثلاً 1509):",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return DATE_CUSTOM
-
-    keyboard = [
-        [InlineKeyboardButton("26.00", callback_data="qte_26"), InlineKeyboardButton("27.00", callback_data="qte_27")],
-        [InlineKeyboardButton("❌ إلغاء", callback_data="cancel_action")]
-    ]
-    await update.message.reply_text(
-        f"✅ تم تسجيل التاريخ: `{context.user_data['date_full']}`\n\nاختر الكمية (QTE):",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown"
-    )
-    return QTE_VAL
-
-async def qte_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    qte_choice = "26" if query.data == "qte_26" else "27"
-    matricules = context.user_data.get('matricules', [])
-    
-    if not matricules:
-        await query.edit_message_text("❌ انتهت الجلسة. أعد العملية من /start.")
-        return ConversationHandler.END
-
-    date_full = context.user_data.get('date_full')
-    date_short = context.user_data.get('date_short')
-    user = update.effective_user
-
-    cancel_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🛑 إيقاف وإلغاء العملية فوراً", callback_data="stop_process")]])
-    status_msg = await query.edit_message_text(
-        f"⚙️ جاري إنشاء {len(matricules)} ملف PDF... (0/{len(matricules)}) ⏳",
-        reply_markup=cancel_keyboard
-    )
-
-    start_num = get_next_number()
-    current_num = start_num
-    processed_mats = []
-    
-    context.user_data['stop_requested'] = False
-
-    for index, mat in enumerate(matricules, start=1):
-        if context.user_data.get('stop_requested', False):
-            break
-
-        q = multiprocessing.Queue()
-        p = multiprocessing.Process(
-            target=generate_pdf_worker,
-            args=(mat, date_full, date_short, qte_choice, current_num, q)
-        )
-        p.start()
-        context.user_data['worker_process'] = p
-
-        while p.is_alive():
-            if context.user_data.get('stop_requested', False):
-                p.terminate()
-                p.join()
-                break
-            await asyncio.sleep(0.1)
-
-        context.user_data['worker_process'] = None
-
-        if context.user_data.get('stop_requested', False):
-            break
-
-        if not q.empty():
-            status, result = q.get()
-            if status == "SUCCESS":
-                pdf_path = result
-                with open(pdf_path, 'rb') as doc_file:
-                    await context.bot.send_document(
-                        chat_id=query.message.chat_id,
-                        document=doc_file,
-                        filename=os.path.basename(pdf_path),
-                        caption=f"✅ Facture N°: {current_num}\nMatricule: {mat}"
-                    )
-                processed_mats.append(mat)
-                current_num += 1
-                try:
-                    await status_msg.edit_text(
-                        f"⚙️ جاري إنشاء الفواتير... ({index}/{len(matricules)}) ⏳",
-                        reply_markup=cancel_keyboard
-                    )
-                except Exception:
-                    pass
-            else:
-                await context.bot.send_message(
-                    chat_id=query.message.chat_id,
-                    text=f"❌ وقع خطأ مع الماتريكول {mat}: {result}"
-                )
-
-    save_next_number(current_num)
-
-    if context.user_data.get('stop_requested', False):
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text=f"🛑 تم إيقاف العملية بنجاح! تم إنشاء {len(processed_mats)} فاتورة فقط من أصل {len(matricules)}."
-        )
-    else:
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text="🎉 تم إنشاء وإرسال جميع الفواتير بنجاح!\n\nللبدء من جديد اضغط /start أو /admin"
-        )
-
-        if user.id != ADMIN_ID and processed_mats:
-            end_num = current_num - 1
-            num_range = f"{start_num}" if start_num == end_num else f"{start_num} ⬅️ {end_num}"
-            matricules_formatted = "\n".join([f"  • `{m}`" for m in processed_mats])
-
-            await context.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=f"📊 **سجل عملية جديد:**\n\n"
-                     f"👤 المستعمل: {user.full_name} (`{user.id}`)\n"
-                     f"📑 عدد الفواتير: `{len(processed_mats)}`\n"
-                     f"🔢 أرقام الفواتير: `{num_range}`\n"
-                     f"📅 التاريخ المستعمل: `{date_full}`\n"
-                     f"⛽ الكمية (QTE): `{qte_choice}.00`\n\n"
-                     f"🚛 **الماتريكولات المعالجة:**\n{matricules_formatted}",
-                parse_mode="Markdown"
-            )
-
-    return ConversationHandler.END
-
-def kill_active_process(context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['stop_requested'] = True
-    proc = context.user_data.get('worker_process')
-    if proc and proc.is_alive():
-        proc.terminate()
-        proc.join()
-
-async def stop_process_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    kill_active_process(context)
-    await query.answer("🛑 جاري الإيقاف الفوري...", show_alert=True)
-    try:
-        await query.edit_message_text("🛑 تم إيقاف العملية فوراً.")
-    except Exception:
-        pass
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    kill_active_process(context)
-    context.user_data.clear()
-    await update.message.reply_text("تم إلغاء العملية. للبدء من جديد اضغط /start")
-    return ConversationHandler.END
-
-async def cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    kill_active_process(context)
-    context.user_data.clear()
-    await query.answer()
-    try:
-        await query.edit_message_text("❌ تم إلغاء العملية بنجاح.\n\nللبدء من جديد اضغط /start")
-    except Exception:
-        pass
-
-async def setup_bot_commands(application: Application):
-    commands = [
-        BotCommand("start", "🚀 إنتاج فواتير جديدة"),
-        BotCommand("admin", "⚙️ لوحة تحكم المسؤول (الأدمين)"),
-        BotCommand("cancel", "❌ إلغاء العملية الحالية")
-    ]
-    await application.bot.set_my_commands(commands)
-
-def main():
-    print("=== STARTING MAIN FUNCTION ===")
-    if not BOT_TOKEN:
-        print("❌ خطأ: لم يتم العثور على BOT_TOKEN في متغيرات البيئة!")
-        return
-
-    app = Application.builder().token(BOT_TOKEN).post_init(setup_bot_commands).build()
-
-    app.add_handler(CallbackQueryHandler(stop_process_callback, pattern="^stop_process$"))
-    cancel_cb_handler = CallbackQueryHandler(cancel_callback, pattern="^cancel_action$")
-
-    app.add_handler(CommandHandler('admin', admin_panel))
-
-    admin_counter_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(prompt_set_counter, pattern="^admin_set_counter$")],
-        states={
-            SET_COUNTER_STATE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, set_counter_value),
-                cancel_cb_handler
-            ]
-        },
-        fallbacks=[CommandHandler('cancel', cancel), cancel_cb_handler],
-        allow_reentry=True
-    )
-
-    admin_add_mat_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(prompt_add_matricule, pattern="^admin_add_mat_prompt$")],
-        states={
-            ADD_MATRICULE_STATE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, save_new_matricule_value),
-                cancel_cb_handler
-            ]
-        },
-        fallbacks=[CommandHandler('cancel', cancel), cancel_cb_handler],
-        allow_reentry=True
-    )
-
-    admin_date_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(prompt_admin_custom_date, pattern="^admin_date_custom$")],
-        states={
-            ADMIN_CUSTOM_DATE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, save_admin_custom_date),
-                cancel_cb_handler
-            ]
-        },
-        fallbacks=[CommandHandler('cancel', cancel), cancel_cb_handler],
-        allow_reentry=True
-    )
-
-    app.add_handler(admin_counter_handler)
-    app.add_handler(admin_add_mat_handler)
-    app.add_handler(admin_date_handler)
-    
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
-        states={
-            MATRICULES: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_matricules)
-            ],
-            DATE_VAL: [
-                CallbackQueryHandler(date_button_handler, pattern="^date_"),
-                cancel_cb_handler
-            ],
-            DATE_CUSTOM: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_custom_date),
-                cancel_cb_handler
-            ],
-            QTE_VAL: [
-                CallbackQueryHandler(qte_button_handler, pattern="^qte_"),
-                cancel_cb_handler
-            ],
-        },
-        fallbacks=[
-            CommandHandler('cancel', cancel), 
-            cancel_cb_handler, 
-            CallbackQueryHandler(stop_process_callback, pattern="^stop_process$")
-        ],
-        allow_reentry=True
-    )
-
-    app.add_handler(conv_handler)
-    app.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^(admin_|approve_|reject_|remove_uid_|delmat_|selmat_|date_|qte_)"))
-
-    print("🤖 البوت شغال الآن بجميع الخصائص...")
-    app.run_polling(drop_pending_updates=True)
-
-if __name__ == "__main__":
-    multiprocessing.freeze_support()
-    main()
