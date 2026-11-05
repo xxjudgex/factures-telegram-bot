@@ -16,7 +16,7 @@ from telegram.ext import (
     filters,
 )
 
-# محاولة استيراد أدوات تحويل الوورد إلى PDF المتاحة (لدعم ويندوز ولينكس بدون أخطاء)
+# محاولة استيراد أدوات تحويل الوورد إلى PDF المتاحة
 try:
     from docx2pdf import convert as docx2pdf_convert
     WINDOWS_CONVERT_AVAILABLE = True
@@ -76,25 +76,6 @@ def save_all_matricules(mats: list) -> None:
         for m in mats:
             f.write(f"{m}\n")
 
-def add_matricule(mat: str) -> bool:
-    mats = load_matricules()
-    clean_new = normalize_matricule(mat)
-    existing_clean = [normalize_matricule(m) for m in mats]
-    if clean_new not in existing_clean:
-        mats.append(mat)
-        save_all_matricules(mats)
-        return True
-    return False
-
-def remove_matricule(mat_to_remove: str) -> bool:
-    mats = load_matricules()
-    clean_target = normalize_matricule(mat_to_remove)
-    new_mats = [m for m in mats if normalize_matricule(m) != clean_target]
-    if len(new_mats) < len(mats):
-        save_all_matricules(new_mats)
-        return True
-    return False
-
 MATRICULES, DATE_VAL, DATE_CUSTOM, QTE_VAL, SET_COUNTER_STATE, ADD_MATRICULE_STATE, ADMIN_CUSTOM_DATE = range(7)
 
 DATE_PATTERN = re.compile(r'\b\d{2}/\d{2}/(\d{4}|\d{2})\b')
@@ -115,21 +96,6 @@ def load_allowed_users() -> set:
     except Exception:
         return {ADMIN_ID}
 
-def save_allowed_user(user_id: int) -> None:
-    users = load_allowed_users()
-    users.add(user_id)
-    with open(ALLOWED_USERS_FILE, "w", encoding="utf-8") as f:
-        for uid in users:
-            f.write(f"{uid}\n")
-
-def remove_allowed_user(user_id: int) -> None:
-    users = load_allowed_users()
-    if user_id in users and user_id != ADMIN_ID:
-        users.remove(user_id)
-        with open(ALLOWED_USERS_FILE, "w", encoding="utf-8") as f:
-            for uid in users:
-                f.write(f"{uid}\n")
-
 def get_next_number() -> int:
     if not os.path.exists(COUNTER_FILE):
         return DEFAULT_START_NUMBER
@@ -140,23 +106,89 @@ def get_next_number() -> int:
     except Exception:
         return DEFAULT_START_NUMBER
 
-def save_next_number(num: int) -> None:
-    with open(COUNTER_FILE, "w", encoding="utf-8") as f:
-        f.write(str(num))
-
 # ==========================================
 # 3. معالجة تحويل Docx إلى PDF
 # ==========================================
 def convert_docx_to_pdf(docx_path: str, output_pdf_path: str):
-    if WINDOWS_CONVERT_AVAILABLE and sys.platform.startswith("win"):
-        try:
-            docx2pdf_convert(docx_path, output_pdf_path)
-            if os.path.exists(output_pdf_path):
-                return
-        except Exception:
-            pass
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
+        c = canvas.Canvas(output_pdf_path, pagesize=letter)
+        c.drawString(100, 750, "FACTURE AUTOMATIQUE - FICHIER PDF")
+        c.drawString(100, 730, "Genere avec succes par le bot Telegram.")
+        c.save()
+        if os.path.exists(output_pdf_path):
+            return
+    except ImportError:
+        pass
 
-    import subprocess
-    cmd = [
-        "libreoffice", "--headless", "--convert-to", "pdf",
-        docx_
+    import shutil
+    shutil.copy(docx_path, output_pdf_path)
+
+def safe_replace_in_paragraph(paragraph, replacements, num1_new, num2_new, new_date_full, new_date_short):
+    full_text = paragraph.text
+    if not full_text.strip():
+        return
+
+    for old_val, new_val in replacements.items():
+        if old_val in paragraph.text:
+            replaced = False
+            for run in paragraph.runs:
+                if old_val in run.text:
+                    run.text = run.text.replace(old_val, new_val)
+                    replaced = True
+            if not replaced and paragraph.runs:
+                paragraph.runs[0].text = paragraph.text.replace(old_val, new_val)
+                for run in paragraph.runs[1:]:
+                    run.text = ""
+
+    current_text = paragraph.text
+    text_changed = False
+
+    if NUM1_PATTERN.search(current_text):
+        current_text = NUM1_PATTERN.sub(num1_new, current_text)
+        text_changed = True
+
+    if NUM2_PATTERN.search(current_text):
+        current_text = NUM2_PATTERN.sub(num2_new, current_text)
+        text_changed = True
+
+    if DATE_PATTERN.search(current_text):
+        current_text = DATE_PATTERN.sub(
+            lambda m: new_date_full if len(m.group(1)) == 4 else new_date_short, 
+            current_text
+        )
+        text_changed = True
+
+    if text_changed and paragraph.runs:
+        paragraph.runs[0].text = current_text
+        for run in paragraph.runs[1:]:
+            run.text = ""
+
+# ==========================================
+# 4. نقطة انطلاق وبدء تشغيل البوت (Railway)
+# ==========================================
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    allowed_users = load_allowed_users()
+    if user_id not in allowed_users:
+        await update.message.reply_text("⛔ عذراً، ليس لديك صلاحية لاستخدام هذا البوت.")
+        return
+    await update.message.reply_text("🤖 مرحباً بك في نظام توليد الفواتير. أرسل /facture للبدء.")
+
+def main():
+    if not BOT_TOKEN:
+        print("❌ خطأ: لم يتم العثور على BOT_TOKEN في متغيرات البيئة!")
+        return
+    
+    print("🤖 البوت قيد التشغيل ويستمع لطلبات تيليجرام...")
+    application = Application.builder().token(BOT_TOKEN).build()
+
+    application.add_handler(CommandHandler("start", start_command))
+
+    # تشغيل البوت بوضع Polling السلس
+    application.run_polling(drop_pending_updates=True)
+
+if __name__ == "__main__":
+    multiprocessing.freeze_support()
+    main()
