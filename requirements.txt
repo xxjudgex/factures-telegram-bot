@@ -1,2 +1,4 @@
 python-telegram-bot
 python-docx
+reportlab
+pdf2docx
