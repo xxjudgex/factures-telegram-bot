@@ -2,13 +2,11 @@ import os
 import re
 import sys
 import asyncio
-import subprocess
 import datetime
 import multiprocessing
 
 print("=== STARTING BOT SCRIPT ===")
 
-from docx import Document
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import (
     Application,
@@ -20,8 +18,10 @@ from telegram.ext import (
     filters,
 )
 
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TEMPLATE_PATH = os.path.join(BASE_DIR, "factures_automation_template.docx")
 COUNTER_FILE = os.path.join(BASE_DIR, "compteur.txt")
 ALLOWED_USERS_FILE = os.path.join(BASE_DIR, "allowed_users.txt")
 MATRICULES_FILE = os.path.join(BASE_DIR, "matricules.txt")
@@ -85,10 +85,6 @@ def remove_matricule(mat_to_remove: str) -> bool:
 
 MATRICULES, DATE_VAL, DATE_CUSTOM, QTE_VAL, SET_COUNTER_STATE, ADD_MATRICULE_STATE, ADMIN_CUSTOM_DATE = range(7)
 
-DATE_PATTERN = re.compile(r'\b\d{2}/\d{2}/(\d{4}|\d{2})\b')
-NUM1_PATTERN = re.compile(r'RK\s*\d{2}\s*-\s*\d+', re.IGNORECASE)
-NUM2_PATTERN = re.compile(r'\d{4}\s*-\s*M\s*\d+', re.IGNORECASE)
-
 def load_allowed_users() -> set:
     if not os.path.exists(ALLOWED_USERS_FILE):
         return {ADMIN_ID}
@@ -129,79 +125,9 @@ def save_next_number(num: int) -> None:
     with open(COUNTER_FILE, "w", encoding="utf-8") as f:
         f.write(str(num))
 
-def convert_docx_to_pdf(docx_path: str, output_pdf_path: str):
-    if sys.platform.startswith("win"):
-        try:
-            from docx2pdf import convert
-            convert(docx_path, output_pdf_path)
-            return
-        except Exception:
-            pass
-
-    try:
-        cmd = [
-            "libreoffice", "--headless", "--convert-to", "pdf",
-            docx_path, "--outdir", os.path.dirname(output_pdf_path)
-        ]
-        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        generated_pdf = os.path.splitext(docx_path)[0] + ".pdf"
-        if os.path.exists(generated_pdf) and generated_pdf != output_pdf_path:
-            if os.path.exists(output_pdf_path):
-                os.remove(output_pdf_path)
-            os.rename(generated_pdf, output_pdf_path)
-            return
-    except Exception:
-        pass
-
-    import shutil
-    shutil.copy(docx_path, output_pdf_path)
-
-def safe_replace_in_paragraph(paragraph, replacements, num1_new, num2_new, new_date_full, new_date_short):
-    full_text = paragraph.text
-    if not full_text.strip():
-        return
-
-    for old_val, new_val in replacements.items():
-        if old_val in paragraph.text:
-            replaced = False
-            for run in paragraph.runs:
-                if old_val in run.text:
-                    run.text = run.text.replace(old_val, new_val)
-                    replaced = True
-            if not replaced and paragraph.runs:
-                paragraph.runs[0].text = paragraph.text.replace(old_val, new_val)
-                for run in paragraph.runs[1:]:
-                    run.text = ""
-
-    current_text = paragraph.text
-    text_changed = False
-
-    if NUM1_PATTERN.search(current_text):
-        current_text = NUM1_PATTERN.sub(num1_new, current_text)
-        text_changed = True
-
-    if NUM2_PATTERN.search(current_text):
-        current_text = NUM2_PATTERN.sub(num2_new, current_text)
-        text_changed = True
-
-    if DATE_PATTERN.search(current_text):
-        current_text = DATE_PATTERN.sub(
-            lambda m: new_date_full if len(m.group(1)) == 4 else new_date_short, 
-            current_text
-        )
-        text_changed = True
-
-    if text_changed and paragraph.runs:
-        paragraph.runs[0].text = current_text
-        for run in paragraph.runs[1:]:
-            run.text = ""
-
+# توليد ملف PDF احترافي ومنظم يحمل هوية وتصميم شركة RACHKAM
 def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_num, queue):
     try:
-        if not os.path.exists(TEMPLATE_PATH):
-            queue.put(("ERROR", f"ملف القالب غير موجود: {TEMPLATE_PATH}"))
-            return
-
         now = datetime.datetime.now()
         year_full = now.strftime("%Y")
         year_short = now.strftime("%y")
@@ -209,60 +135,57 @@ def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_nu
         num_facture_1 = f"RK {year_short}-{current_num}"
         num_facture_2 = f"{year_full}-M{current_num}"
 
-        doc = Document(TEMPLATE_PATH)
-
-        replacements = {
-            "{MATRICULE}": matricule,
-            "{DATE}": date_full,
-            "{NUM1}": num_facture_1,
-            "{NUM2}": num_facture_2,
-            "{QTE}": f"{qte_choice}.00",
-            "53459 A 34": matricule,
-            "53459 a 34": matricule,
-            "53459 A34": matricule,
-            "53459 a34": matricule,
-            "53459A34": matricule,
-            "53459a34": matricule,
-        }
-
-        if qte_choice == "26":
-            replacements["27.00"] = "26.00"
-            replacements["27,00"] = "26,00"
-            replacements[" 27 "] = " 26 "
-        else:
-            replacements["26.00"] = "27.00"
-            replacements["26,00"] = "27,00"
-            replacements[" 26 "] = " 27 "
-
-        containers = [doc.paragraphs]
-        for table in doc.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    containers.append(cell.paragraphs)
-
-        for section in doc.sections:
-            for header_footer in [section.header, section.first_page_header, section.footer, section.first_page_footer]:
-                if header_footer:
-                    containers.append(header_footer.paragraphs)
-
-        for paragraph_list in containers:
-            for p in paragraph_list:
-                safe_replace_in_paragraph(p, replacements, num_facture_1, num_facture_2, date_full, date_short)
-
         safe_matricule = "".join([c for c in matricule if c.isalnum() or c in (' ', '_', '-')]).strip()
         if not safe_matricule:
             safe_matricule = f"Facture_{current_num}"
 
-        temp_docx = os.path.join(OUTPUT_DIR, f"temp_{safe_matricule}.docx")
         final_pdf = os.path.join(OUTPUT_DIR, f"{safe_matricule}.pdf")
 
-        doc.save(temp_docx)
+        c = canvas.Canvas(final_pdf, pagesize=letter)
+        width, height = letter
 
-        try:
-            convert_docx_to_pdf(temp_docx, final_pdf)
-        finally:
-            if os.path.exists(temp_docx):
-                os.remove(temp_docx)
+        # رأس الفاتورة (معلومات الشركة)
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(50, height - 50, "RACHKAM TRANSPORT NATIONAL")
+        
+        c.setFont("Helvetica", 10)
+        c.drawString(50, height - 70, "Facture de Transport & Logistique")
+        
+        # تفاصيل رقم الفاتورة والتاريخ
+        c.drawString(380, height - 50, f"Facture N°: {num_facture_1}")
+        c.drawString(380, height - 65, f"Ref: {num_facture_2}")
+        c.drawString(380, height - 80, f"Date: {date_full}")
+
+        # خط فاصل أنيق
+        c.setLineWidth(1.5)
+        c.line(50, height - 100, width - 50, height - 100)
+
+        # تفاصيل عملية النقل والماتريكول
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(50, height - 135, "Détails de l'opération :")
+        
+        c.setFont("Helvetica", 11)
+        c.drawString(70, height - 165, f"• Matricule du véhicule : {matricule}")
+        c.drawString(70, height - 195, f"• Quantité (QTE) : {qte_choice}.00 Tonnages")
+
+        # جدول البيانات والتفاصيل
+        c.rect(50, height - 330, width - 100, 90)
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(70, height - 265, "Description des Prestations")
+        c.drawString(420, height - 265, "Total / QTE")
+        
+        c.setLineWidth(0.8)
+        c.line(50, height - 280, width - 50, height - 280)
+        
+        c.setFont("Helvetica", 10)
+        c.drawString(70, height - 305, f"Transport de Matériaux (Camion Matricule: {matricule})")
+        c.drawString(420, height - 305, f"{qte_choice}.00 T")
+
+        # تذييل الصفحة (Footer)
+        c.setFont("Helvetica-Oblique", 9)
+        c.drawString(50, 50, "Document généré automatiquement par le système de gestion RACHKAM TRANSPORT NATIONAL.")
+
+        c.save()
 
         queue.put(("SUCCESS", final_pdf))
     except Exception as e:
