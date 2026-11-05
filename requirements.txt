@@ -1,5 +1,3 @@
 python-telegram-bot
 python-docx
-reportlab
 docx2pdf
-pdf2docx
