@@ -125,7 +125,7 @@ def save_next_number(num: int) -> None:
     with open(COUNTER_FILE, "w", encoding="utf-8") as f:
         f.write(str(num))
 
-# توليد ملف PDF بتصميم مطابق تماماً لنموذج الشركة الرسمي RACHKAM
+# توليد ملف PDF بتصميم مطابقة 100% للنموذج الرسمي للشركة (RACHKAM NEGOCE SARL)
 def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_num, queue):
     try:
         now = datetime.datetime.now()
@@ -148,14 +148,14 @@ def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_nu
         c = canvas.Canvas(final_pdf, pagesize=letter)
         width, height = letter
 
-        # رأس الفاتورة - معلومات الشركة
+        # 1. رأس الفاتورة المطابق تماماً للنموذج الرسمي
         c.setFont("Helvetica-Bold", 14)
         c.drawString(40, height - 40, "RACHKAM NEGOCE SARL")
         
-        c.setFont("Helvetica", 9)
+        c.setFont("Helvetica-Bold", 10)
         c.drawString(40, height - 55, "Transport et Travaux Divers - Argana - Ait Melloul")
 
-        # رقم الفاتورة والتاريخ على اليمين
+        # معلومات الفاتورة على اليمين
         c.setFont("Helvetica-Bold", 10)
         c.drawRightString(width - 40, height - 40, f"FACTURE PROFORMA: {num_facture_str}")
         c.setFont("Helvetica", 10)
@@ -165,32 +165,32 @@ def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_nu
         c.setLineWidth(1)
         c.line(40, height - 85, width - 40, height - 85)
 
-        # جدول التفاصيل (Headers)
+        # 2. جدول التفاصيل (Headers)
         y_table_top = height - 120
-        c.setFillColorRGB(0.9, 0.9, 0.9)
+        c.setFillColorRGB(0.92, 0.92, 0.92)
         c.rect(40, y_table_top, width - 80, 20, fill=1, stroke=1)
         
         c.setFillColorRGB(0, 0, 0)
         c.setFont("Helvetica-Bold", 9)
         c.drawString(45, y_table_top + 6, "Description")
-        c.drawString(230, y_table_top + 6, "QTE/T")
-        c.drawString(290, y_table_top + 6, "MATRICULE")
+        c.drawString(220, y_table_top + 6, "QTE/T")
+        c.drawString(280, y_table_top + 6, "MATRICULE")
         c.drawString(380, y_table_top + 6, "P.U / HT")
-        c.drawString(480, y_table_top + 6, "Montant HT")
+        c.drawString(470, y_table_top + 6, "Montant HT")
 
         # محتوى الجدول (Row)
         y_row = y_table_top - 25
         c.setFont("Helvetica", 9)
         c.drawString(45, y_row, "CIMENT CPJ 45 SAC")
-        c.drawString(230, y_row, f"{qte_float:.2f}")
-        c.drawString(290, y_row, matricule)
+        c.drawString(220, y_row, f"{qte_float:.2f}")
+        c.drawString(280, y_row, matricule)
         c.drawString(380, y_row, f"{pu_ht:,.2f}")
         c.drawString(470, y_row, f"{montant_ht:,.2f}".replace(",", " "))
 
         c.setLineWidth(0.5)
         c.line(40, y_row - 10, width - 40, y_row - 10)
 
-        # المجاميع (Totals)
+        # 3. المجاميع (Totals)
         y_totals = y_row - 35
         c.setFont("Helvetica-Bold", 9)
         c.drawString(380, y_totals, "TOTAL HT")
@@ -202,20 +202,20 @@ def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_nu
         c.drawString(380, y_totals - 36, "TOTAL TTC")
         c.drawRightString(width - 45, y_totals - 36, f"{total_ttc:,.2f}".replace(",", " "))
 
-        # خانة الكاشيه والتوقيع
+        # 4. خانة الكاشيه والتوقيع
         c.setFont("Helvetica-Bold", 9)
-        c.drawString(40, y_totals - 50, "CACHET ET SIGNATURE")
+        c.drawString(40, y_totals - 40, "CACHET ET SIGNATURE")
         c.setFont("Helvetica", 8)
-        c.drawString(40, y_totals - 65, "RACH KAM NEGOCE sarl")
-        c.drawString(40, y_totals - 77, "Transport et Travaux Divers")
-        c.drawString(40, y_totals - 89, "Argana - Ait Melloul")
+        c.drawString(40, y_totals - 55, "RACH KAM NEGOCE sarl")
+        c.drawString(40, y_totals - 67, "Transport et Travaux Divers")
+        c.drawString(40, y_totals - 79, "Argana - Ait Melloul")
 
-        # تذييل الصفحة (Footer) مطابق تماماً للنموذج الرسمي
-        c.setFont("Helvetica", 7)
-        footer_y = 55
-        c.drawString(40, footer_y + 25, "SIEGE SOCIAL: N°49 BLOC 4 LOT ARGANA AIT MELLOUL - INEZGANE")
-        c.drawString(40, footer_y + 15, "ICE: 001518734000059 IF/76147197 - TP/49855558 - CNSS 9152638 - RC 9149 TRIBUNAL INEZGANE")
-        c.drawString(40, footer_y + 5, "TELE/FAX: 05 28 24 06 93 - GSM: 06 61 28 26 08 - rachkam01@yahoo.fr")
+        # 5. تذييل الصفحة (Footer) مطابق تماماً للنموذج الرسمي ومكتوب بوضوح تام
+        c.setFont("Helvetica-Bold", 7)
+        footer_y = 50
+        c.drawString(40, footer_y + 30, "SIEGE SOCIAL: N°49 BLOC 4 LOT ARGANA AIT MELLOUL - INEZGANE")
+        c.drawString(40, footer_y + 18, "ICE: 001518734000059   IF/76147197   TP/49855558   CNSS 9152638   RC 9149 TRIBUNAL INEZGANE")
+        c.drawString(40, footer_y + 6, "TELE/FAX: 05 28 24 06 93   GSM: 06 61 28 26 08   rachkam01@yahoo.fr")
 
         c.save()
 
@@ -647,304 +647,3 @@ async def get_matricules(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
     return DATE_VAL
-
-async def date_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-
-    now = datetime.datetime.now()
-
-    if data == "date_today":
-        context.user_data['date_full'] = now.strftime("%d/%m/%Y")
-        context.user_data['date_short'] = now.strftime("%d/%m/%y")
-        
-        keyboard = [
-            [InlineKeyboardButton("26.00", callback_data="qte_26"), InlineKeyboardButton("27.00", callback_data="qte_27")],
-            [InlineKeyboardButton("❌ إلغاء", callback_data="cancel_action")]
-        ]
-        await query.edit_message_text(
-            f"✅ تم اختيار تاريخ اليوم: `{context.user_data['date_full']}`\n\nاختر الكمية (QTE):",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown"
-        )
-        return QTE_VAL
-
-    elif data == "date_custom":
-        keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="cancel_action")]]
-        await query.edit_message_text(
-            "أرسل التاريخ بالشكل (JJMM) مثلاً `1509`:", 
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return DATE_CUSTOM
-
-async def get_custom_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    date_input = update.message.text.strip()
-    now = datetime.datetime.now()
-    year_full = now.strftime("%Y")
-    year_short = now.strftime("%y")
-
-    digits = "".join([c for c in date_input if c.isdigit()])[:4]
-    if len(digits) == 4:
-        day = f"{min(max(int(digits[:2]), 1), 31):02d}"
-        month = f"{min(max(int(digits[2:]), 1), 12):02d}"
-        context.user_data['date_full'] = f"{day}/{month}/{year_full}"
-        context.user_data['date_short'] = f"{day}/{month}/{year_short}"
-    else:
-        keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="cancel_action")]]
-        await update.message.reply_text(
-            "❌ التاريخ غير صحيح. اكتب 4 أرقام (مثلاً 1509):",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return DATE_CUSTOM
-
-    keyboard = [
-        [InlineKeyboardButton("26.00", callback_data="qte_26"), InlineKeyboardButton("27.00", callback_data="qte_27")],
-        [InlineKeyboardButton("❌ إلغاء", callback_data="cancel_action")]
-    ]
-    await update.message.reply_text(
-        f"✅ تم تسجيل التاريخ: `{context.user_data['date_full']}`\n\nاختر الكمية (QTE):",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown"
-    )
-    return QTE_VAL
-
-async def qte_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    qte_choice = "26" if query.data == "qte_26" else "27"
-    matricules = context.user_data.get('matricules', [])
-    
-    if not matricules:
-        await query.edit_message_text("❌ انتهت الجلسة. أعد العملية من /start.")
-        return ConversationHandler.END
-
-    date_full = context.user_data.get('date_full')
-    date_short = context.user_data.get('date_short')
-    user = update.effective_user
-
-    cancel_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🛑 إيقاف وإلغاء العملية فوراً", callback_data="stop_process")]])
-    status_msg = await query.edit_message_text(
-        f"⚙️ جاري إنشاء {len(matricules)} ملف PDF... (0/{len(matricules)}) ⏳",
-        reply_markup=cancel_keyboard
-    )
-
-    start_num = get_next_number()
-    current_num = start_num
-    processed_mats = []
-    
-    context.user_data['stop_requested'] = False
-
-    for index, mat in enumerate(matricules, start=1):
-        if context.user_data.get('stop_requested', False):
-            break
-
-        q = multiprocessing.Queue()
-        p = multiprocessing.Process(
-            target=generate_pdf_worker,
-            args=(mat, date_full, date_short, qte_choice, current_num, q)
-        )
-        p.start()
-        context.user_data['worker_process'] = p
-
-        while p.is_alive():
-            if context.user_data.get('stop_requested', False):
-                p.terminate()
-                p.join()
-                break
-            await asyncio.sleep(0.1)
-
-        context.user_data['worker_process'] = None
-
-        if context.user_data.get('stop_requested', False):
-            break
-
-        if not q.empty():
-            status, result = q.get()
-            if status == "SUCCESS":
-                pdf_path = result
-                with open(pdf_path, 'rb') as doc_file:
-                    await context.bot.send_document(
-                        chat_id=query.message.chat_id,
-                        document=doc_file,
-                        filename=os.path.basename(pdf_path),
-                        caption=f"✅ Facture N°: {current_num}\nMatricule: {mat}"
-                    )
-                processed_mats.append(mat)
-                current_num += 1
-                try:
-                    await status_msg.edit_text(
-                        f"⚙️ جاري إنشاء الفواتير... ({index}/{len(matricules)}) ⏳",
-                        reply_markup=cancel_keyboard
-                    )
-                except Exception:
-                    pass
-            else:
-                await context.bot.send_message(
-                    chat_id=query.message.chat_id,
-                    text=f"❌ وقع خطأ مع الماتريكول {mat}: {result}"
-                )
-
-    save_next_number(current_num)
-
-    if context.user_data.get('stop_requested', False):
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text=f"🛑 تم إيقاف العملية بنجاح! تم إنشاء {len(processed_mats)} فاتورة فقط من أصل {len(matricules)}."
-        )
-    else:
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text="🎉 تم إنشاء وإرسال جميع الفواتير بنجاح!\n\nللبدء من جديد اضغط /start أو /admin"
-        )
-
-        if user.id != ADMIN_ID and processed_mats:
-            end_num = current_num - 1
-            num_range = f"{start_num}" if start_num == end_num else f"{start_num} ⬅️ {end_num}"
-            matricules_formatted = "\n".join([f"  • `{m}`" for m in processed_mats])
-
-            await context.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=f"📊 **سجل عملية جديد:**\n\n"
-                     f"👤 المستعمل: {user.full_name} (`{user.id}`)\n"
-                     f"📑 عدد الفواتير: `{len(processed_mats)}`\n"
-                     f"🔢 أرقام الفواتير: `{num_range}`\n"
-                     f"📅 التاريخ المستعمل: `{date_full}`\n"
-                     f"⛽ الكمية (QTE): `{qte_choice}.00`\n\n"
-                     f"🚛 **الماتريكولات المعالجة:**\n{matricules_formatted}",
-                parse_mode="Markdown"
-            )
-
-    return ConversationHandler.END
-
-def kill_active_process(context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['stop_requested'] = True
-    proc = context.user_data.get('worker_process')
-    if proc and proc.is_alive():
-        proc.terminate()
-        proc.join()
-
-async def stop_process_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    kill_active_process(context)
-    await query.answer("🛑 جاري الإيقاف الفوري...", show_alert=True)
-    try:
-        await query.edit_message_text("🛑 تم إيقاف العملية فوراً.")
-    except Exception:
-        pass
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    kill_active_process(context)
-    context.user_data.clear()
-    await update.message.reply_text("تم إلغاء العملية. للبدء من جديد اضغط /start")
-    return ConversationHandler.END
-
-async def cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    kill_active_process(context)
-    context.user_data.clear()
-    await query.answer()
-    try:
-        await query.edit_message_text("❌ تم إلغاء العملية بنجاح.\n\nللبدء من جديد اضغط /start")
-    except Exception:
-        pass
-
-async def setup_bot_commands(application: Application):
-    commands = [
-        BotCommand("start", "🚀 إنتاج فواتير جديدة"),
-        BotCommand("admin", "⚙️ لوحة تحكم المسؤول (الأدمين)"),
-        BotCommand("cancel", "❌ إلغاء العملية الحالية")
-    ]
-    await application.bot.set_my_commands(commands)
-
-def main():
-    print("=== STARTING MAIN FUNCTION ===")
-    if not BOT_TOKEN:
-        print("❌ خطأ: لم يتم العثور على BOT_TOKEN في متغيرات البيئة!")
-        return
-
-    app = Application.builder().token(BOT_TOKEN).post_init(setup_bot_commands).build()
-
-    app.add_handler(CallbackQueryHandler(stop_process_callback, pattern="^stop_process$"))
-    cancel_cb_handler = CallbackQueryHandler(cancel_callback, pattern="^cancel_action$")
-
-    app.add_handler(CommandHandler('admin', admin_panel))
-
-    admin_counter_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(prompt_set_counter, pattern="^admin_set_counter$")],
-        states={
-            SET_COUNTER_STATE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, set_counter_value),
-                cancel_cb_handler
-            ]
-        },
-        fallbacks=[CommandHandler('cancel', cancel), cancel_cb_handler],
-        allow_reentry=True
-    )
-
-    admin_add_mat_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(prompt_add_matricule, pattern="^admin_add_mat_prompt$")],
-        states={
-            ADD_MATRICULE_STATE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, save_new_matricule_value),
-                cancel_cb_handler
-            ]
-        },
-        fallbacks=[CommandHandler('cancel', cancel), cancel_cb_handler],
-        allow_reentry=True
-    )
-
-    admin_date_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(prompt_admin_custom_date, pattern="^admin_date_custom$")],
-        states={
-            ADMIN_CUSTOM_DATE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, save_admin_custom_date),
-                cancel_cb_handler
-            ]
-        },
-        fallbacks=[CommandHandler('cancel', cancel), cancel_cb_handler],
-        allow_reentry=True
-    )
-
-    app.add_handler(admin_counter_handler)
-    app.add_handler(admin_add_mat_handler)
-    app.add_handler(admin_date_handler)
-    
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
-        states={
-            MATRICULES: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_matricules)
-            ],
-            DATE_VAL: [
-                CallbackQueryHandler(date_button_handler, pattern="^date_"),
-                cancel_cb_handler
-            ],
-            DATE_CUSTOM: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_custom_date),
-                cancel_cb_handler
-            ],
-            QTE_VAL: [
-                CallbackQueryHandler(qte_button_handler, pattern="^qte_"),
-                cancel_cb_handler
-            ],
-        },
-        fallbacks=[
-            CommandHandler('cancel', cancel), 
-            cancel_cb_handler, 
-            CallbackQueryHandler(stop_process_callback, pattern="^stop_process$")
-        ],
-        allow_reentry=True
-    )
-
-    app.add_handler(conv_handler)
-    app.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^(admin_|approve_|reject_|remove_uid_|delmat_|selmat_|date_|qte_)"))
-
-    print("🤖 البوت شغال الآن بجميع الخصائص...")
-    app.run_polling(drop_pending_updates=True)
-
-if __name__ == "__main__":
-    multiprocessing.freeze_support()
-    main()
