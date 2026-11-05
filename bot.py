@@ -145,10 +145,9 @@ def save_next_number(num: int) -> None:
         f.write(str(num))
 
 # ==========================================
-# 3. معالجة تحويل Docx إلى PDF (بدون مشاكل LibreOffice)
+# 3. معالجة تحويل Docx إلى PDF
 # ==========================================
 def convert_docx_to_pdf(docx_path: str, output_pdf_path: str):
-    # الطريقة الأولى: إذا كان النظام يدعم docx2pdf مباشرة
     if WINDOWS_CONVERT_AVAILABLE and sys.platform.startswith("win"):
         try:
             docx2pdf_convert(docx_path, output_pdf_path)
@@ -157,69 +156,7 @@ def convert_docx_to_pdf(docx_path: str, output_pdf_path: str):
         except Exception:
             pass
 
-    # الطريقة الثانية: البحث عن libreoffice إن وجد في الـ PATH
     import subprocess
     cmd = [
         "libreoffice", "--headless", "--convert-to", "pdf",
-        docx_path, "--outdir", os.path.dirname(output_pdf_path)
-    ]
-    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    generated_pdf = os.path.splitext(docx_path)[0] + ".pdf"
-    if res.returncode == 0 and os.path.exists(generated_pdf):
-        if generated_pdf != output_pdf_path:
-            if os.path.exists(output_pdf_path):
-                os.remove(output_pdf_path)
-            os.rename(generated_pdf, output_pdf_path)
-        return
-
-    # الطريقة الثالثة (البديلة الذكية والآمنة لـ Railway): استخدام تقرير مُولّد افتراضي بصيغة PDF نظيفة لتفادي أي خطأ
-    try:
-        from reportlab.lib.pagesizes import letter
-        from reportlab.pdfgen import canvas
-        c = canvas.Canvas(output_pdf_path, pagesize=letter)
-        c.drawString(100, 750, f"FACTURE AUTOMATIQUE - FICHIER PDF")
-        c.drawString(100, 730, f"Genere avec succes par le bot Telegram.")
-        c.save()
-        if os.path.exists(output_pdf_path):
-            return
-    except ImportError:
-        pass
-
-    # الطريقة الرابعة الاحتياطية القصوى: نسخ ملف الـ docx وتغيير امتداده كحل أخير مؤقت لكي لا يتوقف البوت
-    import shutil
-    shutil.copy(docx_path, output_pdf_path)
-
-def safe_replace_in_paragraph(paragraph, replacements, num1_new, num2_new, new_date_full, new_date_short):
-    full_text = paragraph.text
-    if not full_text.strip():
-        return
-
-    for old_val, new_val in replacements.items():
-        if old_val in paragraph.text:
-            replaced = False
-            for run in paragraph.runs:
-                if old_val in run.text:
-                    run.text = run.text.replace(old_val, new_val)
-                    replaced = True
-            if not replaced and paragraph.runs:
-                paragraph.runs[0].text = paragraph.text.replace(old_val, new_val)
-                for run in paragraph.runs[1:]:
-                    run.text = ""
-
-    current_text = paragraph.text
-    text_changed = False
-
-    if NUM1_PATTERN.search(current_text):
-        current_text = NUM1_PATTERN.sub(num1_new, current_text)
-        text_changed = True
-
-    if NUM2_PATTERN.search(current_text):
-        current_text = NUM2_PATTERN.sub(num2_new, current_text)
-        text_changed = True
-
-    if DATE_PATTERN.search(current_text):
-        current_text = DATE_PATTERN.sub(
-            lambda m: new_date_full if len(m.group(1)) == 4 else new_date_short, 
-            current_text
-        )
-        text_changed = True
+        docx_
