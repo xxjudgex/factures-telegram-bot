@@ -125,7 +125,6 @@ def save_next_number(num: int) -> None:
     with open(COUNTER_FILE, "w", encoding="utf-8") as f:
         f.write(str(num))
 
-# دالة توليد ملف PDF احترافي وحقيقي عبر ReportLab
 def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_num, queue):
     try:
         now = datetime.datetime.now()
@@ -141,27 +140,22 @@ def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_nu
 
         final_pdf = os.path.join(OUTPUT_DIR, f"{safe_matricule}.pdf")
 
-        # رسم وتصميم الفاتورة بشكل رسمي ومرتب
         c = canvas.Canvas(final_pdf, pagesize=letter)
         width, height = letter
 
-        # رأس الفاتورة
         c.setFont("Helvetica-Bold", 16)
         c.drawString(50, height - 50, "RACHKAM TRANSPORT NATIONAL")
         
         c.setFont("Helvetica", 10)
         c.drawString(50, height - 70, "Facture de Transport & Logistique")
         
-        # معلومات الفاتورة
         c.drawString(400, height - 50, f"Facture N°: {num_facture_1}")
         c.drawString(400, height - 65, f"Ref: {num_facture_2}")
         c.drawString(400, height - 80, f"Date: {date_full}")
 
-        # خط فاصل
         c.setLineWidth(1)
         c.line(50, height - 100, width - 50, height - 100)
 
-        # تفاصيل الشاحنة والماتريكول
         c.setFont("Helvetica-Bold", 12)
         c.drawString(50, height - 140, "Détails de l'opération :")
         
@@ -169,7 +163,6 @@ def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_nu
         c.drawString(70, height - 170, f"• Matricule du véhicule : {matricule}")
         c.drawString(70, height - 200, f"• Quantité (QTE) : {qte_choice}.00 Tonnages")
 
-        # جدول مبسط للبيانات
         c.rect(50, height - 320, width - 100, 80)
         c.drawString(70, height - 270, "Description")
         c.drawString(400, height - 270, "Total")
@@ -178,7 +171,6 @@ def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_nu
         c.drawString(70, height - 305, f"Transport de Matériaux (Matricule: {matricule})")
         c.drawString(400, height - 305, f"QTE: {qte_choice}.00")
 
-        # تذييل الصفحة (Footer)
         c.setFont("Helvetica-Oblique", 9)
         c.drawString(50, 50, "Document généré automatiquement par le système de gestion RACHKAM.")
 
@@ -491,3 +483,281 @@ async def prompt_add_matricule(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.edit_message_text(
         "أرسل الماتريكول الجديد بنفس الصيغة التي تريدها أن تظهر في الفاتورة:\n\nمثال:\n`99999 A 34`", 
         parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return ADD_MATRICULE_STATE
+
+async def save_new_matricule_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    if text:
+        added = add_matricule(text)
+        if added:
+            await update.message.reply_text(f"✅ تم إضافة الماتريكول الجديد بنجاح: `{text}`\n\nافتح /admin لإدارة الأسطول.", parse_mode="Markdown")
+        else:
+            await update.message.reply_text(f"⚠️ الماتريكول `{text}` موجود بالفعل في القائمة!", parse_mode="Markdown")
+    return ConversationHandler.END
+
+async def prompt_set_counter(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="cancel_action")]]
+    await query.edit_message_text(
+        "أرسل الرقم الجديد الذي تريد أن يبدأ منه العداد (مثلاً: `35158`):", 
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return SET_COUNTER_STATE
+
+async def set_counter_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    if text.isdigit():
+        new_val = int(text)
+        save_next_number(new_val)
+        await update.message.reply_text(f"✅ تم تحديث العداد بنجاح! الرقم القادم هو: `{new_val}`", parse_mode="Markdown")
+    else:
+        await update.message.reply_text("❌ المرجو إدخال رقم صحيح فقط.")
+    return ConversationHandler.END
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    allowed_users = load_allowed_users()
+
+    context.user_data.clear()
+
+    if user.id not in allowed_users:
+        await update.message.reply_text(
+            "🔒 هذا البوت خاص واستخدامه يتطلب إذن المالك.\n"
+            "تم إرسال طلب الانضمام إلى الأدمين للمراجعة..."
+        )
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("قبول ✅", callback_data=f"approve_{user.id}"),
+                InlineKeyboardButton("رفض ❌", callback_data=f"reject_{user.id}"),
+            ]
+        ]
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"🔔 **طلب دخول جديد للبوت:**\n\n"
+                 f"👤 الاسم: {user.full_name}\n"
+                 f"🏷️ اليوزر: @{user.username if user.username else 'بدون يوزر'}\n"
+                 f"🆔 الـ ID: `{user.id}`",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return ConversationHandler.END
+
+    await update.message.reply_text(
+        "مرحباً بك فـ بوت إنشاء الفواتير! 📄\n\n"
+        "أرسل قائمة الماتريكولات (كل ماتريكول فسطر بوحده):\n\n"
+        "مثال:\n"
+        "67383 A 34\n"
+        "53459 A 34"
+    )
+    return MATRICULES
+
+async def get_matricules(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    input_matricules = [line.strip() for line in text.splitlines() if line.strip()]
+
+    if not input_matricules:
+        await update.message.reply_text("عافاك صيفط ماتريكول واحد على الأقل.")
+        return MATRICULES
+
+    current_allowed = load_matricules()
+    allowed_clean_dict = {normalize_matricule(m): m for m in current_allowed}
+
+    invalid_matricules = []
+    valid_matricules = []
+
+    for raw_mat in input_matricules:
+        clean_mat = normalize_matricule(raw_mat)
+        if clean_mat in allowed_clean_dict:
+            valid_matricules.append(allowed_clean_dict[clean_mat])
+        else:
+            invalid_matricules.append(raw_mat)
+
+    if invalid_matricules:
+        invalid_list_str = "\n".join([f"❌ `{m}`" for m in invalid_matricules])
+        await update.message.reply_text(
+            f"⚠️ **تنبيه:** الماتريكولات التالية غير موجودة في قاعدة البيانات الخاصة بأسطول الشركة:\n\n"
+            f"{invalid_list_str}\n\n"
+            f"المرجو التأكد أو التحدث مع الأدمين لإضافتها.",
+            parse_mode="Markdown"
+        )
+        return MATRICULES
+
+    context.user_data['matricules'] = valid_matricules
+
+    now = datetime.datetime.now()
+    today_str = now.strftime("%d/%m/%Y")
+
+    keyboard = [
+        [InlineKeyboardButton(f"📅 تاريخ اليوم ({today_str})", callback_data="date_today")],
+        [InlineKeyboardButton("✏️ إدخال تاريخ آخر", callback_data="date_custom")],
+        [InlineKeyboardButton("❌ إلغاء", callback_data="cancel_action")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        f"✅ تم التحقق بنجاح من {len(valid_matricules)} ماتريكول.\n\nاختر التاريخ المطلوب:",
+        reply_markup=reply_markup
+    )
+    return DATE_VAL
+
+async def date_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    now = datetime.datetime.now()
+
+    if data == "date_today":
+        context.user_data['date_full'] = now.strftime("%d/%m/%Y")
+        context.user_data['date_short'] = now.strftime("%d/%m/%y")
+        
+        keyboard = [
+            [InlineKeyboardButton("26.00", callback_data="qte_26"), InlineKeyboardButton("27.00", callback_data="qte_27")],
+            [InlineKeyboardButton("❌ إلغاء", callback_data="cancel_action")]
+        ]
+        await query.edit_message_text(
+            f"✅ تم اختيار تاريخ اليوم: `{context.user_data['date_full']}`\n\nاختر الكمية (QTE):",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+        return QTE_VAL
+
+    elif data == "date_custom":
+        keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="cancel_action")]]
+        await query.edit_message_text(
+            "أرسل التاريخ بالشكل (JJMM) مثلاً `1509`:", 
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return DATE_CUSTOM
+
+async def get_custom_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    date_input = update.message.text.strip()
+    now = datetime.datetime.now()
+    year_full = now.strftime("%Y")
+    year_short = now.strftime("%y")
+
+    digits = "".join([c for c in date_input if c.isdigit()])[:4]
+    if len(digits) == 4:
+        day = f"{min(max(int(digits[:2]), 1), 31):02d}"
+        month = f"{min(max(int(digits[2:]), 1), 12):02d}"
+        context.user_data['date_full'] = f"{day}/{month}/{year_full}"
+        context.user_data['date_short'] = f"{day}/{month}/{year_short}"
+    else:
+        keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="cancel_action")]]
+        await update.message.reply_text(
+            "❌ التاريخ غير صحيح. اكتب 4 أرقام (مثلاً 1509):",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return DATE_CUSTOM
+
+    keyboard = [
+        [InlineKeyboardButton("26.00", callback_data="qte_26"), InlineKeyboardButton("27.00", callback_data="qte_27")],
+        [InlineKeyboardButton("❌ إلغاء", callback_data="cancel_action")]
+    ]
+    await update.message.reply_text(
+        f"✅ تم تسجيل التاريخ: `{context.user_data['date_full']}`\n\nاختر الكمية (QTE):",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+    return QTE_VAL
+
+async def qte_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    qte_choice = "26" if query.data == "qte_26" else "27"
+    matricules = context.user_data.get('matricules', [])
+    
+    if not matricules:
+        await query.edit_message_text("❌ انتهت الجلسة. أعد العملية من /start.")
+        return ConversationHandler.END
+
+    date_full = context.user_data.get('date_full')
+    date_short = context.user_data.get('date_short')
+    user = update.effective_user
+
+    cancel_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🛑 إيقاف وإلغاء العملية فوراً", callback_data="stop_process")]])
+    status_msg = await query.edit_message_text(
+        f"⚙️ جاري إنشاء {len(matricules)} ملف PDF... (0/{len(matricules)}) ⏳",
+        reply_markup=cancel_keyboard
+    )
+
+    start_num = get_next_number()
+    current_num = start_num
+    processed_mats = []
+    
+    context.user_data['stop_requested'] = False
+
+    for index, mat in enumerate(matricules, start=1):
+        if context.user_data.get('stop_requested', False):
+            break
+
+        q = multiprocessing.Queue()
+        p = multiprocessing.Process(
+            target=generate_pdf_worker,
+            args=(mat, date_full, date_short, qte_choice, current_num, q)
+        )
+        p.start()
+        context.user_data['worker_process'] = p
+
+        while p.is_alive():
+            if context.user_data.get('stop_requested', False):
+                p.terminate()
+                p.join()
+                break
+            await asyncio.sleep(0.1)
+
+        context.user_data['worker_process'] = None
+
+        if context.user_data.get('stop_requested', False):
+            break
+
+        if not q.empty():
+            status, result = q.get()
+            if status == "SUCCESS":
+                pdf_path = result
+                with open(pdf_path, 'rb') as doc_file:
+                    await context.bot.send_document(
+                        chat_id=query.message.chat_id,
+                        document=doc_file,
+                        filename=os.path.basename(pdf_path),
+                        caption=f"✅ Facture N°: {current_num}\nMatricule: {mat}"
+                    )
+                processed_mats.append(mat)
+                current_num += 1
+                try:
+                    await status_msg.edit_text(
+                        f"⚙️ جاري إنشاء الفواتير... ({index}/{len(matricules)}) ⏳",
+                        reply_markup=cancel_keyboard
+                    )
+                except Exception:
+                    pass
+            else:
+                await context.bot.send_message(
+                    chat_id=query.message.chat_id,
+                    text=f"❌ وقع خطأ مع الماتريكول {mat}: {result}"
+                )
+
+    save_next_number(current_num)
+
+    if context.user_data.get('stop_requested', False):
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=f"🛑 تم إيقاف العملية بنجاح! تم إنشاء {len(processed_mats)} فاتورة فقط من أصل {len(matricules)}."
+        )
+    else:
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text="🎉 تم إنشاء وإرسال جميع الفواتير بنجاح!\n\nللبدء من جديد اضغط /start أو /admin"
+        )
+
+        if user.id != ADMIN_ID and processed_mats:
+            end_num = current_num - 1
+            num_range = f"{start_num}" if start_num == end_num else f"{start_num} ⬅️ {end_num}"
+            matricules_formatted =
