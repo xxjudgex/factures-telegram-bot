@@ -1,3 +1,0 @@
-[phases.setup]
-nixPkgs = ["python3", "libreoffice"]
-# libreoffice support added
