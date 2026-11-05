@@ -125,7 +125,6 @@ def save_next_number(num: int) -> None:
     with open(COUNTER_FILE, "w", encoding="utf-8") as f:
         f.write(str(num))
 
-# توليد ملف PDF بتصميم مطابق 100% للنموذج الأصلي (حسب الصورة المرفقة)
 def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_num, queue):
     try:
         now = datetime.datetime.now()
@@ -148,14 +147,12 @@ def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_nu
         c = canvas.Canvas(final_pdf, pagesize=letter)
         width, height = letter
 
-        # 1. رأس الفاتورة (Logo الشركة والعنوان بخط عريض مطابق للصورة)
         c.setFont("Helvetica-Bold", 12)
         c.drawString(40, height - 40, "RACHKAM NEGOCE SARL")
         
         c.setFont("Helvetica", 9)
         c.drawString(40, height - 55, "Transport et Travaux Divers - Argana - Ait Melloul")
 
-        # 2. إطار رقم الفاتورة والتاريخ
         box_y = height - 90
         c.setLineWidth(1)
         c.rect(40, box_y, width - 80, 25)
@@ -164,12 +161,10 @@ def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_nu
         c.drawString(48, box_y + 8, f"FACTURE PROFORMA : {num_facture_str}")
         c.drawRightString(width - 48, box_y + 8, f"DATE LE {date_full}")
 
-        # 3. إطار اسم العميل (CLIENT : DIVERS)
         client_y = box_y - 35
         c.rect(40, client_y, width - 80, 22)
         c.drawString(48, client_y + 7, "CLIENT : DIVERS")
 
-        # 4. جدول التفاصيل (Table Headers)
         y_table_top = client_y - 30
         c.rect(40, y_table_top - 5, width - 80, 20)
         
@@ -180,7 +175,6 @@ def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_nu
         c.drawString(370, y_table_top + 2, "P, U / HT")
         c.drawString(470, y_table_top + 2, "Montant HT")
 
-        # صف البيانات (Row Data)
         y_row = y_table_top - 25
         c.rect(40, y_row - 5, width - 80, 20)
         c.setFont("Helvetica", 8)
@@ -190,9 +184,7 @@ def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_nu
         c.drawString(370, y_row + 2, f"{pu_ht:,.2f}")
         c.drawString(465, y_row + 2, f"{montant_ht:,.2f}".replace(",", " "))
 
-        # 5. المجاميع (Totals داخل جدول صغير على اليمين تحت الجدول الرئيسي)
         y_tot = y_row - 25
-        
         c.rect(340, y_tot - 55, width - 380, 55)
         
         c.setFont("Helvetica-Bold", 8)
@@ -205,11 +197,9 @@ def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_nu
         c.drawString(350, y_tot - 48, "TOTAL TTC")
         c.drawRightString(width - 48, y_tot - 48, f"{total_ttc:,.2f}".replace(",", " "))
 
-        # 6. خانة التوقيع والكاشيه (CACHET ET SIGNATURE)
         c.setFont("Helvetica-Bold", 8)
         c.drawString(40, y_tot - 25, "CACHET ET SIGNATURE")
 
-        # 7. تذييل الصفحة (Footer الرسمي للشركة مطابق للصورة تماماً)
         footer_y = 45
         c.setLineWidth(1.5)
         c.line(40, footer_y + 35, width - 40, footer_y + 35)
@@ -296,4 +286,116 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
         )
 
     elif data.startswith("selmat_"):
-        action
+        action = data.replace("selmat_", "")
+        selected_set = context.user_data.get('admin_selected_mats', set())
+        mats = load_matricules()
+
+        if action == "all":
+            selected_set = set(mats)
+        elif action == "none":
+            selected_set = set()
+        elif action == "confirm":
+            if not selected_set:
+                await query.answer("⚠️ المرجو اختيار ماتريكول واحد على الأقل!", show_alert=True)
+                return
+            context.user_data['matricules'] = list(selected_set)
+            
+            now = datetime.datetime.now()
+            today_str = now.strftime("%d/%m/%Y")
+            keyboard = [
+                [InlineKeyboardButton(f"📅 تاريخ اليوم ({today_str})", callback_data="date_today")],
+                [InlineKeyboardButton("✏️ إدخال تاريخ آخر", callback_data="admin_date_custom")],
+                [InlineKeyboardButton("❌ إلغاء", callback_data="cancel_action")]
+            ]
+            await query.edit_message_text(
+                f"✅ تم تحديد {len(selected_set)} ماتريكول.\n\nاختر التاريخ المطلوب:",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return
+        else:
+            for m in mats:
+                if normalize_matricule(m) == action:
+                    if m in selected_set:
+                        selected_set.remove(m)
+                    else:
+                        selected_set.add(m)
+                    break
+
+        context.user_data['admin_selected_mats'] = selected_set
+        await query.edit_message_text(
+            f"📋 **حدد الماتريكولات التي تريد إنشاء فواتير لها ({len(selected_set)} محددة):**",
+            reply_markup=build_matricule_selection_keyboard(selected_set),
+            parse_mode="Markdown"
+        )
+
+    elif data.startswith("date_"):
+        await date_button_handler(update, context)
+
+    elif data.startswith("qte_"):
+        await qte_button_handler(update, context)
+
+    elif data == "admin_manage_matricules":
+        mats = load_matricules()
+        keyboard = [
+            [InlineKeyboardButton("➕ إضافة ماتريكول جديد", callback_data="admin_add_mat_prompt")],
+            [InlineKeyboardButton("❌ حذف ماتريكول", callback_data="admin_remove_mat_prompt")],
+            [InlineKeyboardButton("📋 عرض كل الماتريكولات", callback_data="admin_view_all_mats")],
+            [InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="admin_back")]
+        ]
+        await query.edit_message_text(
+            f"🚛 **إدارة أسطول الماتريكولات:**\n\n"
+            f"إجمالي الماتريكولات المقبولة حالياً: `{len(mats)}`",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+
+    elif data == "admin_view_all_mats":
+        mats = load_matricules()
+        mats_list_str = "\n".join([f"• `{m}`" for m in mats])
+        keyboard = [[InlineKeyboardButton("🔙 العودة لـ إدارة الماتريكولات", callback_data="admin_manage_matricules")]]
+        await query.edit_message_text(
+            f"📋 **قائمة أسطول الماتريكولات المسجلة ({len(mats)}):**\n\n"
+            f"{mats_list_str}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+
+    elif data == "admin_remove_mat_prompt":
+        mats = load_matricules()
+        keyboard = []
+        row = []
+        for i, m in enumerate(mats):
+            clean_id = normalize_matricule(m)
+            row.append(InlineKeyboardButton(f"❌ {m}", callback_data=f"delmat_{clean_id}"))
+            if len(row) == 2 or i == len(mats) - 1:
+                keyboard.append(row)
+                row = []
+        keyboard.append([InlineKeyboardButton("🔙 العودة", callback_data="admin_manage_matricules")])
+        await query.edit_message_text(
+            "اضغط على الماتريكول الذي تريد حذفه نهائياً من الأسطول:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+
+    elif data.startswith("delmat_"):
+        target_clean = data.replace("delmat_", "")
+        mats = load_matricules()
+        removed_name = ""
+        for m in mats:
+            if normalize_matricule(m) == target_clean:
+                removed_name = m
+                break
+        
+        if removed_name and remove_matricule(removed_name):
+            msg = f"✅ تم حذف الماتريكول `{removed_name}` بنجاح!"
+        else:
+            msg = "❌ تعذر حذف الماتريكول."
+
+        keyboard = [[InlineKeyboardButton("🔙 العودة لـ إدارة الماتريكولات", callback_data="admin_manage_matricules")]]
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    elif data == "admin_list_users":
+        users = load_allowed_users()
+        msg = "📋 **قائمة المستخدمين المسموح لهم:**\n\n"
+        for uid in users:
+            role = "👑 Admin" if uid
