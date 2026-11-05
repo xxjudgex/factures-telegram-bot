@@ -125,7 +125,7 @@ def save_next_number(num: int) -> None:
     with open(COUNTER_FILE, "w", encoding="utf-8") as f:
         f.write(str(num))
 
-# توليد ملف PDF بتصميم مطابق 100% للنموذج الرسمي للشركة (RACHKAM NEGOCE SARL)
+# توليد ملف PDF بتصميم مطابق 100% للنموذج الأصلي (حسب الصورة المرفقة)
 def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_num, queue):
     try:
         now = datetime.datetime.now()
@@ -148,74 +148,76 @@ def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_nu
         c = canvas.Canvas(final_pdf, pagesize=letter)
         width, height = letter
 
-        # 1. رأس الفاتورة المطابق تماماً للنموذج الرسمي
-        c.setFont("Helvetica-Bold", 14)
+        # 1. رأس الفاتورة (Logo الشركة والعنوان بخط عريض مطابق للصورة)
+        c.setFont("Helvetica-Bold", 12)
         c.drawString(40, height - 40, "RACHKAM NEGOCE SARL")
         
-        c.setFont("Helvetica-Bold", 10)
+        c.setFont("Helvetica", 9)
         c.drawString(40, height - 55, "Transport et Travaux Divers - Argana - Ait Melloul")
 
-        # معلومات الفاتورة على اليمين
-        c.setFont("Helvetica-Bold", 10)
-        c.drawRightString(width - 40, height - 40, f"FACTURE PROFORMA: {num_facture_str}")
-        c.setFont("Helvetica", 10)
-        c.drawRightString(width - 40, height - 55, f"DATE LE {date_full}")
-        c.drawRightString(width - 40, height - 70, "CLIENT: DIVERS")
-
+        # 2. إطار رقم الفاتورة والتاريخ (مماثل تماماً للنموذج الأصلي)
+        box_y = height - 90
         c.setLineWidth(1)
-        c.line(40, height - 85, width - 40, height - 85)
-
-        # 2. جدول التفاصيل (Headers)
-        y_table_top = height - 120
-        c.setFillColorRGB(0.92, 0.92, 0.92)
-        c.rect(40, y_table_top, width - 80, 20, fill=1, stroke=1)
+        c.rect(40, box_y, width - 80, 25)
         
-        c.setFillColorRGB(0, 0, 0)
         c.setFont("Helvetica-Bold", 9)
-        c.drawString(45, y_table_top + 6, "Description")
-        c.drawString(220, y_table_top + 6, "QTE/T")
-        c.drawString(280, y_table_top + 6, "MATRICULE")
-        c.drawString(380, y_table_top + 6, "P.U / HT")
-        c.drawString(470, y_table_top + 6, "Montant HT")
+        c.drawString(48, box_y + 8, f"FACTURE PROFORMA : {num_facture_str}")
+        c.drawRightString(width - 48, box_y + 8, f"DATE LE {date_full}")
 
-        # محتوى الجدول (Row)
+        # 3. إطار اسم العميل (CLIENT : DIVERS)
+        client_y = box_y - 35
+        c.rect(40, client_y, width - 80, 22)
+        c.drawString(48, client_y + 7, "CLIENT : DIVERS")
+
+        # 4. جدول التفاصيل (Table Headers)
+        y_table_top = client_y - 30
+        c.rect(40, y_table_top - 5, width - 80, 20)
+        
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(50, y_table_top + 2, "Description")
+        c.drawString(210, y_table_top + 2, "QTE/T")
+        c.drawString(285, y_table_top + 2, "MATRICULE")
+        c.drawString(370, y_table_top + 2, "P, U / HT")
+        c.drawString(470, y_table_top + 2, "Montant HT")
+
+        # صف البيانات (Row Data)
         y_row = y_table_top - 25
-        c.setFont("Helvetica", 9)
-        c.drawString(45, y_row, "CIMENT CPJ 45 SAC")
-        c.drawString(220, y_row, f"{qte_float:.2f}")
-        c.drawString(280, y_row, matricule)
-        c.drawString(380, y_row, f"{pu_ht:,.2f}")
-        c.drawString(470, y_row, f"{montant_ht:,.2f}".replace(",", " "))
-
-        c.setLineWidth(0.5)
-        c.line(40, y_row - 10, width - 40, y_row - 10)
-
-        # 3. المجاميع (Totals)
-        y_totals = y_row - 35
-        c.setFont("Helvetica-Bold", 9)
-        c.drawString(380, y_totals, "TOTAL HT")
-        c.drawRightString(width - 45, y_totals, f"{montant_ht:,.2f}".replace(",", " "))
-
-        c.drawString(380, y_totals - 18, "TVA 20%")
-        c.drawRightString(width - 45, y_totals - 18, f"{tva:,.2f}".replace(",", " "))
-
-        c.drawString(380, y_totals - 36, "TOTAL TTC")
-        c.drawRightString(width - 45, y_totals - 36, f"{total_ttc:,.2f}".replace(",", " "))
-
-        # 4. خانة الكاشيه والتوقيع
-        c.setFont("Helvetica-Bold", 9)
-        c.drawString(40, y_totals - 40, "CACHET ET SIGNATURE")
+        c.rect(40, y_row - 5, width - 80, 20)
         c.setFont("Helvetica", 8)
-        c.drawString(40, y_totals - 55, "RACH KAM NEGOCE sarl")
-        c.drawString(40, y_totals - 67, "Transport et Travaux Divers")
-        c.drawString(40, y_totals - 79, "Argana - Ait Melloul")
+        c.drawString(50, y_row + 2, "CIMENT CPJ 45 SAC")
+        c.drawString(210, y_row + 2, f"{qte_float:.2f}")
+        c.drawString(285, y_row + 2, matricule)
+        c.drawString(370, y_row + 2, f"{pu_ht:,.2f}")
+        c.drawString(465, y_row + 2, f"{montant_ht:,.2f}".replace(",", " "))
 
-        # 5. تذييل الصفحة (Footer) مطابق تماماً للنموذج الرسمي
+        # 5. المجاميع (Totals داخل جدول صغير على اليمين تحت الجدول الرئيسي)
+        y_tot = y_row - 25
+        
+        c.rect(340, y_tot - 55, width - 380, 55)
+        
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(350, y_tot - 12, "TOTAL HT")
+        c.drawRightString(width - 48, y_tot - 12, f"{montant_ht:,.2f}".replace(",", " "))
+
+        c.drawString(350, y_tot - 30, "TVA 20%")
+        c.drawRightString(width - 48, y_tot - 30, f"{tva:,.2f}".replace(",", " "))
+
+        c.drawString(350, y_tot - 48, "TOTAL TTC")
+        c.drawRightString(width - 48, y_tot - 48, f"{total_ttc:,.2f}".replace(",", " "))
+
+        # 6. خانة التوقيع والكاشيه (CACHET ET SIGNATURE)
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(40, y_tot - 25, "CACHET ET SIGNATURE")
+
+        # 7. تذييل الصفحة (Footer الرسمي للشركة مطابق للصورة تماماً)
+        footer_y = 45
+        c.setLineWidth(1.5)
+        c.line(40, footer_y + 35, width - 40, footer_y + 35)
+
         c.setFont("Helvetica-Bold", 7)
-        footer_y = 50
-        c.drawString(40, footer_y + 30, "SIEGE SOCIAL: N°49 BLOC 4 LOT ARGANA AIT MELLOUL - INEZGANE")
-        c.drawString(40, footer_y + 18, "ICE: 001518734000059   IF/76147197   TP/49855558   CNSS 9152638   RC 9149 TRIBUNAL INEZGANE")
-        c.drawString(40, footer_y + 6, "TELE/FAX: 05 28 24 06 93   GSM: 06 61 28 26 08   rachkam01@yahoo.fr")
+        c.drawString(40, footer_y + 22, "SIEGE SOCIAL: N°49 BLOC 4 LOT ARGANA AIT MELLOUL - INEZGANE")
+        c.drawString(40, footer_y + 12, "ICE: 001518734000059   IF/76147197   TP/49855558   CNSS 9152638   RC 9149 TRIBUNAL INEZGANE")
+        c.drawString(40, footer_y + 2, "TELE/FAX: 05 28 24 06 93   GSM: 06 61 28 26 08   rachkam01@yahoo.fr")
 
         c.save()
 
@@ -770,190 +772,4 @@ async def qte_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         chat_id=query.message.chat_id,
                         document=doc_file,
                         filename=os.path.basename(pdf_path),
-                        caption=f"✅ Facture N°: {current_num}\nMatricule: {mat}"
-                    )
-                processed_mats.append(mat)
-                current_num += 1
-                try:
-                    await status_msg.edit_text(
-                        f"⚙️ جاري إنشاء الفواتير... ({index}/{len(matricules)}) ⏳",
-                        reply_markup=cancel_keyboard
-                    )
-                except Exception:
-                    pass
-            else:
-                await context.bot.send_message(
-                    chat_id=query.message.chat_id,
-                    text=f"❌ وقع خطأ مع الماتريكول {mat}: {result}"
-                )
-
-    save_next_number(current_num)
-
-    if context.user_data.get('stop_requested', False):
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text=f"🛑 تم إيقاف العملية بنجاح! تم إنشاء {len(processed_mats)} فاتورة فقط من أصل {len(matricules)}."
-        )
-    else:
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text="🎉 تم إنشاء وإرسال جميع الفواتير بنجاح!\n\nللبدء من جديد اضغط /start أو /admin"
-        )
-
-        if user.id != ADMIN_ID and processed_mats:
-            end_num = current_num - 1
-            num_range = f"{start_num}" if start_num == end_num else f"{start_num} ⬅️ {end_num}"
-            matricules_formatted = "\n".join([f"  • `{m}`" for m in processed_mats])
-
-            await context.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=f"📊 **سجل عملية جديد:**\n\n"
-                     f"👤 المستعمل: {user.full_name} (`{user.id}`)\n"
-                     f"📑 عدد الفواتير: `{len(processed_mats)}`\n"
-                     f"🔢 أرقام الفواتير: `{num_range}`\n"
-                     f"📅 التاريخ المستعمل: `{date_full}`\n"
-                     f"⛽ الكمية (QTE): `{qte_choice}.00`\n\n"
-                     f"🚛 **الماتريكولات المعالجة:**\n{matricules_formatted}",
-                parse_mode="Markdown"
-            )
-
-    return ConversationHandler.END
-
-def kill_active_process(context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['stop_requested'] = True
-    proc = context.user_data.get('worker_process')
-    if proc and proc.is_alive():
-        proc.terminate()
-        proc.join()
-
-async def stop_process_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    kill_active_process(context)
-    await query.answer("🛑 جاري الإيقاف الفوري...", show_alert=True)
-    try:
-        await query.edit_message_text("🛑 تم إيقاف العملية فوراً.")
-    except Exception:
-        pass
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    kill_active_process(context)
-    context.user_data.clear()
-    await update.message.reply_text("تم إلغاء العملية. للبدء من جديد اضغط /start")
-    return ConversationHandler.END
-
-async def cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    kill_active_process(context)
-    context.user_data.clear()
-    await query.answer()
-    try:
-        await query.edit_message_text("❌ تم إلغاء العملية بنجاح.\n\nللبدء من جديد اضغط /start")
-    except Exception:
-        pass
-
-async def setup_bot_commands(application: Application):
-    commands = [
-        BotCommand("start", "🚀 إنتاج فواتير جديدة"),
-        BotCommand("admin", "⚙️ لوحة تحكم المسؤول (الأدمين)"),
-        BotCommand("cancel", "❌ إلغاء العملية الحالية")
-    ]
-    await application.bot.set_my_commands(commands)
-
-async def post_init(application: Application):
-    await setup_bot_commands(application)
-    # مسح أي Webhook قديم عالق لضمان عمل الـ Polling بحرية تامة وبدون تعارض
-    try:
-        await application.bot.delete_webhook(drop_pending_updates=True)
-        print("✅ تم مسح أي Webhook قديم بنجاح.")
-    except Exception as e:
-        print(f"⚠️ ملاحظة أثناء مسح الـ Webhook: {e}")
-
-def main():
-    print("=== STARTING MAIN FUNCTION ===")
-    if not BOT_TOKEN:
-        print("❌ خطأ: لم يتم العثور على BOT_TOKEN في متغيرات البيئة!")
-        return
-
-    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
-
-    app.add_handler(CallbackQueryHandler(stop_process_callback, pattern="^stop_process$"))
-    cancel_cb_handler = CallbackQueryHandler(cancel_callback, pattern="^cancel_action$")
-
-    app.add_handler(CommandHandler('admin', admin_panel))
-
-    admin_counter_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(prompt_set_counter, pattern="^admin_set_counter$")],
-        states={
-            SET_COUNTER_STATE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, set_counter_value),
-                cancel_cb_handler
-            ]
-        },
-        fallbacks=[CommandHandler('cancel', cancel), cancel_cb_handler],
-        allow_reentry=True
-    )
-
-    admin_add_mat_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(prompt_add_matricule, pattern="^admin_add_mat_prompt$")],
-        states={
-            ADD_MATRICULE_STATE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, save_new_matricule_value),
-                cancel_cb_handler
-            ]
-        },
-        fallbacks=[CommandHandler('cancel', cancel), cancel_cb_handler],
-        allow_reentry=True
-    )
-
-    admin_date_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(prompt_admin_custom_date, pattern="^admin_date_custom$")],
-        states={
-            ADMIN_CUSTOM_DATE: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, save_admin_custom_date),
-                cancel_cb_handler
-            ]
-        },
-        fallbacks=[CommandHandler('cancel', cancel), cancel_cb_handler],
-        allow_reentry=True
-    )
-
-    app.add_handler(admin_counter_handler)
-    app.add_handler(admin_add_mat_handler)
-    app.add_handler(admin_date_handler)
-    
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
-        states={
-            MATRICULES: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_matricules)
-            ],
-            DATE_VAL: [
-                CallbackQueryHandler(date_button_handler, pattern="^date_"),
-                cancel_cb_handler
-            ],
-            DATE_CUSTOM: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_custom_date),
-                cancel_cb_handler
-            ],
-            QTE_VAL: [
-                CallbackQueryHandler(qte_button_handler, pattern="^qte_"),
-                cancel_cb_handler
-            ],
-        },
-        fallbacks=[
-            CommandHandler('cancel', cancel), 
-            cancel_cb_handler, 
-            CallbackQueryHandler(stop_process_callback, pattern="^stop_process$")
-        ],
-        allow_reentry=True
-    )
-
-    app.add_handler(conv_handler)
-    app.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^(admin_|approve_|reject_|remove_uid_|delmat_|selmat_|date_|qte_)"))
-
-    print("🤖 البوت شغال الآن بجميع الخصائص...")
-    app.run_polling(drop_pending_updates=True)
-
-if __name__ == "__main__":
-    multiprocessing.freeze_support()
-    main()
+                        caption=f"
