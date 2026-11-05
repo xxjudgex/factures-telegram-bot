@@ -760,4 +760,148 @@ async def qte_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if user.id != ADMIN_ID and processed_mats:
             end_num = current_num - 1
             num_range = f"{start_num}" if start_num == end_num else f"{start_num} ⬅️ {end_num}"
-            matricules_formatted =
+            matricules_formatted = "\n".join([f"  • `{m}`" for m in processed_mats])
+
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=f"📊 **سجل عملية جديد:**\n\n"
+                     f"👤 المستعمل: {user.full_name} (`{user.id}`)\n"
+                     f"📑 عدد الفواتير: `{len(processed_mats)}`\n"
+                     f"🔢 أرقام الفواتير: `{num_range}`\n"
+                     f"📅 التاريخ المستعمل: `{date_full}`\n"
+                     f"⛽ الكمية (QTE): `{qte_choice}.00`\n\n"
+                     f"🚛 **الماتريكولات المعالجة:**\n{matricules_formatted}",
+                parse_mode="Markdown"
+            )
+
+    return ConversationHandler.END
+
+def kill_active_process(context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['stop_requested'] = True
+    proc = context.user_data.get('worker_process')
+    if proc and proc.is_alive():
+        proc.terminate()
+        proc.join()
+
+async def stop_process_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    kill_active_process(context)
+    await query.answer("🛑 جاري الإيقاف الفوري...", show_alert=True)
+    try:
+        await query.edit_message_text("🛑 تم إيقاف العملية فوراً.")
+    except Exception:
+        pass
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    kill_active_process(context)
+    context.user_data.clear()
+    await update.message.reply_text("تم إلغاء العملية. للبدء من جديد اضغط /start")
+    return ConversationHandler.END
+
+async def cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    kill_active_process(context)
+    context.user_data.clear()
+    await query.answer()
+    try:
+        await query.edit_message_text("❌ تم إلغاء العملية بنجاح.\n\nللبدء من جديد اضغط /start")
+    except Exception:
+        pass
+
+async def setup_bot_commands(application: Application):
+    commands = [
+        BotCommand("start", "🚀 إنتاج فواتير جديدة"),
+        BotCommand("admin", "⚙️ لوحة تحكم المسؤول (الأدمين)"),
+        BotCommand("cancel", "❌ إلغاء العملية الحالية")
+    ]
+    await application.bot.set_my_commands(commands)
+
+def main():
+    print("=== STARTING MAIN FUNCTION ===")
+    if not BOT_TOKEN:
+        print("❌ خطأ: لم يتم العثور على BOT_TOKEN في متغيرات البيئة!")
+        return
+
+    app = Application.builder().token(BOT_TOKEN).post_init(setup_bot_commands).build()
+
+    app.add_handler(CallbackQueryHandler(stop_process_callback, pattern="^stop_process$"))
+    cancel_cb_handler = CallbackQueryHandler(cancel_callback, pattern="^cancel_action$")
+
+    app.add_handler(CommandHandler('admin', admin_panel))
+
+    admin_counter_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(prompt_set_counter, pattern="^admin_set_counter$")],
+        states={
+            SET_COUNTER_STATE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, set_counter_value),
+                cancel_cb_handler
+            ]
+        },
+        fallbacks=[CommandHandler('cancel', cancel), cancel_cb_handler],
+        allow_reentry=True
+    )
+
+    admin_add_mat_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(prompt_add_matricule, pattern="^admin_add_mat_prompt$")],
+        states={
+            ADD_MATRICULE_STATE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, save_new_matricule_value),
+                cancel_cb_handler
+            ]
+        },
+        fallbacks=[CommandHandler('cancel', cancel), cancel_cb_handler],
+        allow_reentry=True
+    )
+
+    admin_date_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(prompt_admin_custom_date, pattern="^admin_date_custom$")],
+        states={
+            ADMIN_CUSTOM_DATE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, save_admin_custom_date),
+                cancel_cb_handler
+            ]
+        },
+        fallbacks=[CommandHandler('cancel', cancel), cancel_cb_handler],
+        allow_reentry=True
+    )
+
+    app.add_handler(admin_counter_handler)
+    app.add_handler(admin_add_mat_handler)
+    app.add_handler(admin_date_handler)
+    
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+        states={
+            MATRICULES: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_matricules)
+            ],
+            DATE_VAL: [
+                CallbackQueryHandler(date_button_handler, pattern="^date_"),
+                cancel_cb_handler
+            ],
+            DATE_CUSTOM: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_custom_date),
+                cancel_cb_handler
+            ],
+            QTE_VAL: [
+                CallbackQueryHandler(qte_button_handler, pattern="^qte_"),
+                cancel_cb_handler
+            ],
+        },
+        fallbacks=[
+            CommandHandler('cancel', cancel), 
+            cancel_cb_handler, 
+            CallbackQueryHandler(stop_process_callback, pattern="^stop_process$")
+        ],
+        allow_reentry=True
+    )
+
+    app.add_handler(conv_handler)
+    app.add_handler(CallbackQueryHandler(admin_callback_handler, pattern="^(admin_|approve_|reject_|remove_uid_|delmat_|selmat_|date_|qte_)"))
+
+    print("🤖 البوت شغال الآن بجميع الخصائص...")
+    app.run_polling(drop_pending_updates=True)
+
+if __name__ == "__main__":
+    multiprocessing.freeze_support()
+    main()
