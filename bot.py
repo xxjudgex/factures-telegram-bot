@@ -125,15 +125,19 @@ def save_next_number(num: int) -> None:
     with open(COUNTER_FILE, "w", encoding="utf-8") as f:
         f.write(str(num))
 
-# توليد ملف PDF احترافي ومنظم يحمل هوية وتصميم شركة RACHKAM
+# توليد ملف PDF بتصميم مطابق تماماً لنموذج الشركة الرسمي RACHKAM
 def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_num, queue):
     try:
         now = datetime.datetime.now()
-        year_full = now.strftime("%Y")
         year_short = now.strftime("%y")
 
-        num_facture_1 = f"RK {year_short}-{current_num}"
-        num_facture_2 = f"{year_full}-M{current_num}"
+        num_facture_str = f"RK {year_short}-{current_num}"
+        
+        qte_float = float(qte_choice)
+        pu_ht = 1316.66
+        montant_ht = qte_float * pu_ht
+        tva = montant_ht * 0.20
+        total_ttc = montant_ht + tva
 
         safe_matricule = "".join([c for c in matricule if c.isalnum() or c in (' ', '_', '-')]).strip()
         if not safe_matricule:
@@ -144,46 +148,74 @@ def generate_pdf_worker(matricule, date_full, date_short, qte_choice, current_nu
         c = canvas.Canvas(final_pdf, pagesize=letter)
         width, height = letter
 
-        # رأس الفاتورة (معلومات الشركة)
-        c.setFont("Helvetica-Bold", 16)
-        c.drawString(50, height - 50, "RACHKAM TRANSPORT NATIONAL")
+        # رأس الفاتورة - معلومات الشركة
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(40, height - 40, "RACHKAM NEGOCE SARL")
         
-        c.setFont("Helvetica", 10)
-        c.drawString(50, height - 70, "Facture de Transport & Logistique")
-        
-        # تفاصيل رقم الفاتورة والتاريخ
-        c.drawString(380, height - 50, f"Facture N°: {num_facture_1}")
-        c.drawString(380, height - 65, f"Ref: {num_facture_2}")
-        c.drawString(380, height - 80, f"Date: {date_full}")
+        c.setFont("Helvetica", 9)
+        c.drawString(40, height - 55, "Transport et Travaux Divers - Argana - Ait Melloul")
 
-        # خط فاصل أنيق
-        c.setLineWidth(1.5)
-        c.line(50, height - 100, width - 50, height - 100)
-
-        # تفاصيل عملية النقل والماتريكول
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(50, height - 135, "Détails de l'opération :")
-        
-        c.setFont("Helvetica", 11)
-        c.drawString(70, height - 165, f"• Matricule du véhicule : {matricule}")
-        c.drawString(70, height - 195, f"• Quantité (QTE) : {qte_choice}.00 Tonnages")
-
-        # جدول البيانات والتفاصيل
-        c.rect(50, height - 330, width - 100, 90)
+        # رقم الفاتورة والتاريخ على اليمين
         c.setFont("Helvetica-Bold", 10)
-        c.drawString(70, height - 265, "Description des Prestations")
-        c.drawString(420, height - 265, "Total / QTE")
-        
-        c.setLineWidth(0.8)
-        c.line(50, height - 280, width - 50, height - 280)
-        
+        c.drawRightString(width - 40, height - 40, f"FACTURE PROFORMA: {num_facture_str}")
         c.setFont("Helvetica", 10)
-        c.drawString(70, height - 305, f"Transport de Matériaux (Camion Matricule: {matricule})")
-        c.drawString(420, height - 305, f"{qte_choice}.00 T")
+        c.drawRightString(width - 40, height - 55, f"DATE LE {date_full}")
+        c.drawRightString(width - 40, height - 70, "CLIENT: DIVERS")
 
-        # تذييل الصفحة (Footer)
-        c.setFont("Helvetica-Oblique", 9)
-        c.drawString(50, 50, "Document généré automatiquement par le système de gestion RACHKAM TRANSPORT NATIONAL.")
+        c.setLineWidth(1)
+        c.line(40, height - 85, width - 40, height - 85)
+
+        # جدول التفاصيل (Headers)
+        y_table_top = height - 120
+        c.setFillColorRGB(0.9, 0.9, 0.9)
+        c.rect(40, y_table_top, width - 80, 20, fill=1, stroke=1)
+        
+        c.setFillColorRGB(0, 0, 0)
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(45, y_table_top + 6, "Description")
+        c.drawString(230, y_table_top + 6, "QTE/T")
+        c.drawString(290, y_table_top + 6, "MATRICULE")
+        c.drawString(380, y_table_top + 6, "P.U / HT")
+        c.drawString(480, y_table_top + 6, "Montant HT")
+
+        # محتوى الجدول (Row)
+        y_row = y_table_top - 25
+        c.setFont("Helvetica", 9)
+        c.drawString(45, y_row, "CIMENT CPJ 45 SAC")
+        c.drawString(230, y_row, f"{qte_float:.2f}")
+        c.drawString(290, y_row, matricule)
+        c.drawString(380, y_row, f"{pu_ht:,.2f}")
+        c.drawString(470, y_row, f"{montant_ht:,.2f}".replace(",", " "))
+
+        c.setLineWidth(0.5)
+        c.line(40, y_row - 10, width - 40, y_row - 10)
+
+        # المجاميع (Totals)
+        y_totals = y_row - 35
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(380, y_totals, "TOTAL HT")
+        c.drawRightString(width - 45, y_totals, f"{montant_ht:,.2f}".replace(",", " "))
+
+        c.drawString(380, y_totals - 18, "TVA 20%")
+        c.drawRightString(width - 45, y_totals - 18, f"{tva:,.2f}".replace(",", " "))
+
+        c.drawString(380, y_totals - 36, "TOTAL TTC")
+        c.drawRightString(width - 45, y_totals - 36, f"{total_ttc:,.2f}".replace(",", " "))
+
+        # خانة الكاشيه والتوقيع
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(40, y_totals - 50, "CACHET ET SIGNATURE")
+        c.setFont("Helvetica", 8)
+        c.drawString(40, y_totals - 65, "RACH KAM NEGOCE sarl")
+        c.drawString(40, y_totals - 77, "Transport et Travaux Divers")
+        c.drawString(40, y_totals - 89, "Argana - Ait Melloul")
+
+        # تذييل الصفحة (Footer) مطابق تماماً للنموذج الرسمي
+        c.setFont("Helvetica", 7)
+        footer_y = 55
+        c.drawString(40, footer_y + 25, "SIEGE SOCIAL: N°49 BLOC 4 LOT ARGANA AIT MELLOUL - INEZGANE")
+        c.drawString(40, footer_y + 15, "ICE: 001518734000059 IF/76147197 - TP/49855558 - CNSS 9152638 - RC 9149 TRIBUNAL INEZGANE")
+        c.drawString(40, footer_y + 5, "TELE/FAX: 05 28 24 06 93 - GSM: 06 61 28 26 08 - rachkam01@yahoo.fr")
 
         c.save()
 
